@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+
+  
+  <title>Soul 网关源码分析（二）divide, rewrite 插件 | 冷吟閑酔二三年</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <meta name="description" content="在上一节里我们编译好了 Soul 网关的源码，今天我们从rewrite插件开始学习如何对服务进行代理并重写路径。 首先我们用Python写一个简单的Flask应用： 123456789101112from flask import Flaskapp &#x3D; Flask(__name__)@app.route(&amp;#x27;&#x2F;foo&#x2F;bar&#x2F;&amp;#x27;)def hello_world():    ret">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Soul 网关源码分析（二）divide, rewrite 插件">
+<meta property="og:url" content="https://hazyrain.com/2021/01/16/Soul-%E7%BD%91%E5%85%B3%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90%EF%BC%88%E4%BA%8C%EF%BC%89divide-rewrite-%E6%8F%92%E4%BB%B6/index.html">
+<meta property="og:site_name" content="冷吟閑酔二三年">
+<meta property="og:description" content="在上一节里我们编译好了 Soul 网关的源码，今天我们从rewrite插件开始学习如何对服务进行代理并重写路径。 首先我们用Python写一个简单的Flask应用： 123456789101112from flask import Flaskapp &#x3D; Flask(__name__)@app.route(&amp;#x27;&#x2F;foo&#x2F;bar&#x2F;&amp;#x27;)def hello_world():    ret">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115211421555.png">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115210809657.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115211626802.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115213000568.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115213237513.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115213635126.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115214219112.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210115214458570.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210116013439579.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210116014205816.png">
+<meta property="og:image" content="https://img-blog.csdnimg.cn/20210116015548504.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70">
+<meta property="article:published_time" content="2021-01-16T08:13:22.000Z">
+<meta property="article:modified_time" content="2023-04-15T00:31:43.496Z">
+<meta property="article:author" content="Dige Qiao">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://img-blog.csdnimg.cn/20210115211421555.png">
+  
+    <link rel="alternate" href="/atom.xml" title="冷吟閑酔二三年" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png">
+  
+  
+    <link href="//fonts.googleapis.com/css?family=Source+Code+Pro" rel="stylesheet" type="text/css">
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+
+<body>
+  <div id="container">
+    <div id="wrap">
+      <header id="header">
+  <div id="banner"></div>
+  <div id="header-outer" class="outer">
+    <div id="header-title" class="inner">
+      <h1 id="logo-wrap">
+        <a href="/" id="logo">冷吟閑酔二三年</a>
+      </h1>
+      
+    </div>
+    <div id="header-inner" class="inner">
+      <nav id="main-nav">
+        <a id="main-nav-toggle" class="nav-icon"></a>
+        
+          <a class="main-nav-link" href="/">Home</a>
+        
+          <a class="main-nav-link" href="/archives">Archives</a>
+        
+      </nav>
+      <nav id="sub-nav">
+        
+          <a id="nav-rss-link" class="nav-icon" href="/atom.xml" title="RSS Feed"></a>
+        
+        <a id="nav-search-btn" class="nav-icon" title="搜索"></a>
+      </nav>
+      <div id="search-form-wrap">
+        <form action="//google.com/search" method="get" accept-charset="UTF-8" class="search-form"><input type="search" name="q" class="search-form-input" placeholder="Search"><button type="submit" class="search-form-submit">&#xF002;</button><input type="hidden" name="sitesearch" value="https://hazyrain.com"></form>
+      </div>
+    </div>
+  </div>
+</header>
+      <div class="outer">
+        <section id="main"><article id="post-Soul-网关源码分析（二）divide-rewrite-插件" class="article article-type-post" itemscope itemprop="blogPost">
+  <div class="article-meta">
+    <a href="/2021/01/16/Soul-%E7%BD%91%E5%85%B3%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90%EF%BC%88%E4%BA%8C%EF%BC%89divide-rewrite-%E6%8F%92%E4%BB%B6/" class="article-date">
+  <time datetime="2021-01-16T08:13:22.000Z" itemprop="datePublished">2021-01-16</time>
+</a>
+    
+  </div>
+  <div class="article-inner">
+    
+    
+      <header class="article-header">
+        
+  
+    <h1 class="article-title" itemprop="name">
+      Soul 网关源码分析（二）divide, rewrite 插件
+    </h1>
+  
+
+      </header>
+    
+    <div class="article-entry" itemprop="articleBody">
+      
+        <p>在上一节里我们编译好了 Soul 网关的源码，今天我们从rewrite插件开始学习如何对服务进行代理并重写路径。</p>
+<p>首先我们用Python写一个简单的Flask应用：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> flask <span class="keyword">import</span> Flask</span><br><span class="line"></span><br><span class="line">app = Flask(__name__)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="meta">@app.route(<span class="params"><span class="string">&#x27;/foo/bar/&#x27;</span></span>)</span></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">hello_world</span>():</span><br><span class="line">    <span class="keyword">return</span> <span class="string">&#x27;Hello World!&#x27;</span></span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">&#x27;__main__&#x27;</span>:</span><br><span class="line">    app.run()</span><br></pre></td></tr></table></figure>
+
+<p>启动服务后，我们可以看到现在设置的路径为：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">http://127.0.0.1:5000/foo/bar/</span><br></pre></td></tr></table></figure>
+<p>尝试使用 curl 访问对应的接口：<br><img src="https://img-blog.csdnimg.cn/20210115211421555.png" alt="在这里插入图片描述"><br>OK，服务正常。图床</p>
+<p>我们在 soul-admin 选择 <strong>rewrite</strong> 插件，点击添加选择器：<br><img src="https://img-blog.csdnimg.cn/20210115210809657.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="选择添加选择器"><br>在弹出的对话框中输入：<br><img src="https://img-blog.csdnimg.cn/20210115211626802.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>点击确认后，通过 Chrome debug 可以捕获到前端发起的三个请求，分别是：</p>
+<ol>
+<li>&#x2F;selector</li>
+<li>&#x2F;selector?pluginId&#x3D;3&amp;currentPage&#x3D;1&amp;pageSize&#x3D;12</li>
+<li>&#x2F;rule?currentPage&#x3D;1&amp;pageSize&#x3D;12&amp;selectorId&#x3D;1350069791219036160</li>
+</ol>
+<p>我们追踪到对应的源码可以看到：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * query Selectors.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * <span class="doctag">@param</span> pluginId    plugin id.</span></span><br><span class="line"><span class="comment"> * <span class="doctag">@param</span> currentPage current page.</span></span><br><span class="line"><span class="comment"> * <span class="doctag">@param</span> pageSize    page size.</span></span><br><span class="line"><span class="comment"> * <span class="doctag">@return</span> &#123;<span class="doctag">@linkplain</span> SoulAdminResult&#125;</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="meta">@GetMapping(&quot;&quot;)</span></span><br><span class="line"><span class="keyword">public</span> SoulAdminResult <span class="title function_">querySelectors</span><span class="params">(<span class="keyword">final</span> String pluginId, <span class="keyword">final</span> Integer currentPage, <span class="keyword">final</span> Integer pageSize)</span> &#123;</span><br><span class="line">    CommonPager&lt;SelectorVO&gt; commonPager = selectorService.listByPage(<span class="keyword">new</span> <span class="title class_">SelectorQuery</span>(pluginId, <span class="keyword">new</span> <span class="title class_">PageParameter</span>(currentPage, pageSize)));</span><br><span class="line">    <span class="keyword">return</span> SoulAdminResult.success(SoulResultMessage.QUERY_SUCCESS, commonPager);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>前两个请求其实是在加载我们右侧的选择器，现在我们没有创建选择器，所以什么也没有。<br>而 &#x2F;rule 这个请求是在查询现有的规则列表。</p>
+<p>点击右侧的“创建选择器”按钮来创建选择器：<br><img src="https://img-blog.csdnimg.cn/20210115213000568.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>创建好选择器后，由于我们仅仅是把选择器的数据存放在了 数据库中（根据你配置可能在 MySQL 或 H2里），我们如果需要他即时生效需要点击同步自定义rewrite。<br><img src="https://img-blog.csdnimg.cn/20210115213237513.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>接口调用路径是</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">http://localhost:9095/plugin/syncPluginData/3</span><br></pre></td></tr></table></figure>
+<p>返回 “sync success”，我们再次切换到源码：<br><img src="https://img-blog.csdnimg.cn/20210115213635126.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>发现 soul-admin 用到了Spring 中的 ApplicationEventPublisher，在如下路径的类中，我们也找到了soul-admin处理这些时间的逻辑：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">org/dromara/soul/admin/listener/DataChangedEventDispatcher.java</span><br></pre></td></tr></table></figure>
+<p><img src="https://img-blog.csdnimg.cn/20210115214219112.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>刚刚我们应该是通过点击按钮触发了 “onPluginChanged” 这个事件，可以看到，根据我们所配置的数据同步侧录额，soul 提供了三种实现方式：<br><img src="https://img-blog.csdnimg.cn/20210115214458570.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"></p>
+<ol>
+<li><p>WebSocket<br> 在 WebsocketDataChangedListener 中调用 onPluginChanged 方法来向 SoulBootstrapApplication 发送JSON序列化后的消息。</p>
+</li>
+<li><p>Nacos<br> 如果配置 Nacos 进行同步，则是通过 ConfigService 来发送消息。</p>
+ <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">onPluginChanged</span><span class="params">(<span class="keyword">final</span> List&lt;PluginData&gt; changed, <span class="keyword">final</span> DataEventTypeEnum eventType)</span> &#123;</span><br><span class="line">     updatePluginMap(getConfig(PLUGIN_DATA_ID));</span><br><span class="line">     <span class="keyword">switch</span> (eventType) &#123;</span><br><span class="line">         <span class="keyword">case</span> DELETE:</span><br><span class="line">             changed.forEach(plugin -&gt; PLUGIN_MAP.remove(plugin.getName()));</span><br><span class="line">             <span class="keyword">break</span>;</span><br><span class="line">         <span class="keyword">case</span> REFRESH:</span><br><span class="line">         <span class="keyword">case</span> MYSELF:</span><br><span class="line">             Set&lt;String&gt; set = <span class="keyword">new</span> <span class="title class_">HashSet</span>&lt;&gt;(PLUGIN_MAP.keySet());</span><br><span class="line">             changed.forEach(plugin -&gt; &#123;</span><br><span class="line">                 set.remove(plugin.getName());</span><br><span class="line">                 PLUGIN_MAP.put(plugin.getName(), plugin);</span><br><span class="line">             &#125;);</span><br><span class="line">             PLUGIN_MAP.keySet().removeAll(set);</span><br><span class="line">             <span class="keyword">break</span>;</span><br><span class="line">         <span class="keyword">default</span>:</span><br><span class="line">             changed.forEach(plugin -&gt; PLUGIN_MAP.put(plugin.getName(), plugin));</span><br><span class="line">             <span class="keyword">break</span>;</span><br><span class="line">     &#125;</span><br><span class="line">     publishConfig(PLUGIN_DATA_ID, PLUGIN_MAP);</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure></li>
+<li><p>ZooKeeper<br>  通过节点同步数据。</p>
+ <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@Override</span></span><br><span class="line">   <span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">onPluginChanged</span><span class="params">(<span class="keyword">final</span> List&lt;PluginData&gt; changed, <span class="keyword">final</span> DataEventTypeEnum eventType)</span> &#123;</span><br><span class="line">       <span class="keyword">for</span> (PluginData data : changed) &#123;</span><br><span class="line">           <span class="keyword">final</span> <span class="type">String</span> <span class="variable">pluginPath</span> <span class="operator">=</span> ZkPathConstants.buildPluginPath(data.getName());</span><br><span class="line">           <span class="comment">// delete</span></span><br><span class="line">           <span class="keyword">if</span> (eventType == DataEventTypeEnum.DELETE) &#123;</span><br><span class="line">               deleteZkPathRecursive(pluginPath);</span><br><span class="line">               <span class="keyword">final</span> <span class="type">String</span> <span class="variable">selectorParentPath</span> <span class="operator">=</span> ZkPathConstants.buildSelectorParentPath(data.getName());</span><br><span class="line">               deleteZkPathRecursive(selectorParentPath);</span><br><span class="line">               <span class="keyword">final</span> <span class="type">String</span> <span class="variable">ruleParentPath</span> <span class="operator">=</span> ZkPathConstants.buildRuleParentPath(data.getName());</span><br><span class="line">               deleteZkPathRecursive(ruleParentPath);</span><br><span class="line">               <span class="keyword">continue</span>;</span><br><span class="line">           &#125;</span><br><span class="line">           <span class="comment">//create or update</span></span><br><span class="line">           upsertZkNode(pluginPath, data);</span><br><span class="line">       &#125;</span><br><span class="line">   &#125;</span><br></pre></td></tr></table></figure>
+<p>可以通过对指定接口发起 POST 请求来注册其他语言的服务：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">	&quot;appName&quot;: &quot;xxx&quot;, //应用名称 必填</span><br><span class="line">	&quot;context&quot;: &quot;/xxx&quot;, //请求前缀 必填</span><br><span class="line">	&quot;path&quot;: &quot;xxx&quot;, //路径需要唯一 必填</span><br><span class="line">	&quot;pathDesc&quot;: &quot;xxx&quot;, //路径描述</span><br><span class="line">	&quot;rpcType&quot;: &quot;http&quot;, //rpc类型  必填</span><br><span class="line">	&quot;host&quot;: &quot;xxx&quot;, //服务host 必填</span><br><span class="line">	&quot;port&quot;: xxx, //服务端口 必填</span><br><span class="line">	&quot;ruleName&quot;: &quot;xxx&quot;, //可以同path一样  必填</span><br><span class="line">	&quot;enabled&quot;: &quot;true&quot;, //是否开启</span><br><span class="line">	&quot;registerMetaData&quot;: &quot;true&quot; //是否需要注册元数据</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">请求地址：http://&#123;ip&#125;:&#123;port&#125;/soul-client/springmvc-register 请自行输入soul-admin 的 IP 和 PORT</span><br></pre></td></tr></table></figure>
+<p>在 postman 或其他工具中成功注册服务：<br><img src="https://img-blog.csdnimg.cn/20210116013439579.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>但我们发现并不能直接通过 soul 来代理我们的 flask 服务：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">➜  ~ curl http://localhost:9195</span><br><span class="line">&#123;&quot;code&quot;:-107,&quot;message&quot;:&quot;Can not find selector, please check your configuration!&quot;,&quot;data&quot;:null&#125;%</span><br></pre></td></tr></table></figure>
+<p>仔细查看文档后，发现需要先设置 Divide 插件并添加对应的selector。<br><img src="https://img-blog.csdnimg.cn/20210116014205816.png" alt="在这里插入图片描述"><br>配置完成后可以看到 divide 插件成功选取到了 我们配置的 test1 selector，但是我们的请求</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">curl http://localhost:9195/foo/bar/</span><br></pre></td></tr></table></figure>
+<p>被解析成了 <a target="_blank" rel="noopener" href="http://127.0.0.1:5000/bar/%EF%BC%8C%E4%B8%80%E5%AE%9A%E6%98%AF%E4%BB%80%E4%B9%88%E5%9C%B0%E6%96%B9%E5%87%BA%E4%BA%86%E9%97%AE%E9%A2%98%E3%80%82">http://127.0.0.1:5000/bar/，一定是什么地方出了问题。</a><br>再看看源码<br><img src="https://img-blog.csdnimg.cn/20210116015548504.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3dpY2tlZFdpbmdz,size_16,color_FFFFFF,t_70" alt="在这里插入图片描述"><br>我们发现 在 org&#x2F;dromara&#x2F;soul&#x2F;plugin&#x2F;divide&#x2F;DividePlugin.java 这个类中 buildRealURL 会将我们的 “&#x2F;foo” 识别为 module，然后把“&#x2F;bar” 识别为真实的request path，所以导致了刚刚的问题。<br>再次尝试在前面加一层，成功了。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">➜  ~ curl http://localhost:9195/1/foo/bar/</span><br><span class="line">Hello World!%</span><br></pre></td></tr></table></figure></li>
+</ol>
+
+      
+    </div>
+    <footer class="article-footer">
+      <a data-url="https://hazyrain.com/2021/01/16/Soul-%E7%BD%91%E5%85%B3%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90%EF%BC%88%E4%BA%8C%EF%BC%89divide-rewrite-%E6%8F%92%E4%BB%B6/" data-id="clgh8r52w000u5spe4q0x18l5" class="article-share-link">Share</a>
+      
+      
+    </footer>
+  </div>
+  
+    
+<nav id="article-nav">
+  
+    <a href="/2023/04/15/test-post/" id="article-nav-newer" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Newer</strong>
+      <div class="article-nav-title">
+        
+          test_post
+        
+      </div>
+    </a>
+  
+  
+    <a href="/2020/09/03/Redis%E5%85%AB%E8%82%A1%E6%96%87/" id="article-nav-older" class="article-nav-link-wrap">
+      <strong class="article-nav-caption">Older</strong>
+      <div class="article-nav-title">Redis八股文</div>
+    </a>
+  
+</nav>
+
+  
+</article>
+
+</section>
+        
+          <aside id="sidebar">
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">分类</h3>
+    <div class="widget">
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/ARTS/">ARTS</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/Java/">Java</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/PHP/">PHP</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/frontend/">frontend</a></li><li class="category-list-item"><a class="category-list-link" href="/categories/mysql/">mysql</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">标签</h3>
+    <div class="widget">
+      <ul class="tag-list" itemprop="keywords"><li class="tag-list-item"><a class="tag-list-link" href="/tags/ARTS/" rel="tag">ARTS</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Java/" rel="tag">Java</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/PHP/" rel="tag">PHP</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/Vue-js/" rel="tag">Vue.js</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/interview/" rel="tag">interview</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/mixture/" rel="tag">mixture</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/mysql/" rel="tag">mysql</a></li><li class="tag-list-item"><a class="tag-list-link" href="/tags/traps/" rel="tag">traps</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">标签云</h3>
+    <div class="widget tagcloud">
+      <a href="/tags/ARTS/" style="font-size: 20px;">ARTS</a> <a href="/tags/Java/" style="font-size: 15px;">Java</a> <a href="/tags/PHP/" style="font-size: 10px;">PHP</a> <a href="/tags/Vue-js/" style="font-size: 10px;">Vue.js</a> <a href="/tags/interview/" style="font-size: 10px;">interview</a> <a href="/tags/mixture/" style="font-size: 10px;">mixture</a> <a href="/tags/mysql/" style="font-size: 10px;">mysql</a> <a href="/tags/traps/" style="font-size: 10px;">traps</a>
+    </div>
+  </div>
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">归档</h3>
+    <div class="widget">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2023/04/">四月 2023</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2021/01/">一月 2021</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2020/09/">九月 2020</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/08/">八月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/07/">七月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/06/">六月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2019/05/">五月 2019</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/08/">八月 2018</a></li><li class="archive-list-item"><a class="archive-list-link" href="/archives/2018/04/">四月 2018</a></li></ul>
+    </div>
+  </div>
+
+
+  
+    
+  <div class="widget-wrap">
+    <h3 class="widget-title">最新文章</h3>
+    <div class="widget">
+      <ul>
+        
+          <li>
+            <a href="/2023/04/15/test-post/">test_post</a>
+          </li>
+        
+          <li>
+            <a href="/2021/01/16/Soul-%E7%BD%91%E5%85%B3%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90%EF%BC%88%E4%BA%8C%EF%BC%89divide-rewrite-%E6%8F%92%E4%BB%B6/">Soul 网关源码分析（二）divide, rewrite 插件</a>
+          </li>
+        
+          <li>
+            <a href="/2020/09/03/Redis%E5%85%AB%E8%82%A1%E6%96%87/">Redis八股文</a>
+          </li>
+        
+          <li>
+            <a href="/2019/08/02/ARTS-04/">ARTS-04</a>
+          </li>
+        
+          <li>
+            <a href="/2019/07/26/ARTS-03/">ARTS-03</a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+
+  
+</aside>
+        
+      </div>
+      <footer id="footer">
+  
+  <div class="outer">
+    <div id="footer-info" class="inner">
+      &copy; 2023 Dige Qiao<br>
+      Powered by <a href="http://hexo.io/" target="_blank">Hexo</a>
+    </div>
+  </div>
+</footer>
+    </div>
+    <nav id="mobile-nav">
+  
+    <a href="/" class="mobile-nav-link">Home</a>
+  
+    <a href="/archives" class="mobile-nav-link">Archives</a>
+  
+</nav>
+    
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
+
+
+  
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css">
+
+  
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+
+
+
+
+<script src="/js/script.js"></script>
+
+
+
+
+  </div>
+</body>
+</html>
